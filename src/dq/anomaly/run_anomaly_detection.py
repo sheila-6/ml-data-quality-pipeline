@@ -1,19 +1,42 @@
-from src.dq.anomaly.detectors import run_isolation_forest_for_table
+from sqlalchemy import text
+from src.config.db_config import get_engine
+from src.dq.anomaly.detectors import run_isolation_forest_for_table, run_dbscan_for_table
+
+
+def reset_anomaly_tables():
+    """Clear anomalies and metrics to avoid duplicate rows on rerun."""
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(text("TRUNCATE TABLE dq.anomalies RESTART IDENTITY"))
+        conn.execute(text("TRUNCATE TABLE dq.anomaly_metrics RESTART IDENTITY"))
+    print("Cleared dq.anomalies and dq.anomaly_metrics.")
+
 
 # 1) UK E-Commerce dataset: raw.ecommerce_transactions
 def run_for_ecommerce():
     schema = "raw"
     table = "ecommerce_transactions"
 
-    id_cols = ["transaction_no", "product_no"]   # identifiers for tracking
-    numeric_cols = ["price", "quantity"]         # adjust if you add total_amount column later
+    numeric_cols = ["price", "quantity"]  # adjust if you add total_amount column later
 
     run_isolation_forest_for_table(
         schema=schema,
         table=table,
-        id_cols=id_cols,
+        record_id_col="transaction_no",
+        entity_id_col="product_no",
         numeric_cols=numeric_cols,
         model_name="isolation_forest_ecommerce"
+    )
+
+    run_dbscan_for_table(
+        schema=schema,
+        table=table,
+        id_cols=["transaction_no", "product_no"],
+        numeric_cols=numeric_cols,
+        limit_rows=50000,
+        eps=0.6,
+        min_samples=15,
+        model_name="dbscan_ecommerce"
     )
 
 
@@ -22,20 +45,33 @@ def run_for_online_retail():
     schema = "raw"
     table = "online_retail"
 
-    id_cols = ["invoice_no", "stock_code", "customer_id"]
-    numeric_cols = ["unit_price", "quantity"]    # you can add total_value = unit_price * quantity later
+    numeric_cols = ["unit_price", "quantity"]  # you can add total_value = unit_price * quantity later
 
     run_isolation_forest_for_table(
         schema=schema,
         table=table,
-        id_cols=id_cols,
+        record_id_col="invoice_no",
+        entity_id_col="stock_code",
+        context_cols=["customer_id"],
         numeric_cols=numeric_cols,
         model_name="isolation_forest_online_retail"
     )
 
+    run_dbscan_for_table(
+        schema=schema,
+        table=table,
+        id_cols=["invoice_no", "stock_code", "customer_id"],
+        numeric_cols=numeric_cols,
+        limit_rows=50000,
+        eps=0.6,
+        min_samples=15,
+        model_name="dbscan_online_retail"
+    )
+
 
 if __name__ == "__main__":
-    print("🚀 Starting anomaly detection pipeline...")
+    reset_anomaly_tables()
+    print("Starting anomaly detection pipeline...")
     run_for_ecommerce()
     run_for_online_retail()
-    print("\n🎉 Anomaly detection completed for both datasets.")
+    print("\nAnomaly detection completed for both datasets.")
