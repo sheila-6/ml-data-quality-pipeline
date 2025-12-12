@@ -1,6 +1,10 @@
 from sqlalchemy import text
 from src.config.db_config import get_engine
-from src.dq.anomaly.detectors import run_isolation_forest_for_table, run_dbscan_for_table
+from src.dq.anomaly.detectors import (
+    run_isolation_forest_for_table,
+    run_dbscan_for_table,
+    run_knn_outlier_for_table,
+)
 
 
 def reset_anomaly_tables():
@@ -39,6 +43,17 @@ def run_for_ecommerce():
         model_name="dbscan_ecommerce"
     )
 
+    run_knn_outlier_for_table(
+        schema=schema,
+        table=table,
+        id_cols=["transaction_no", "product_no"],
+        numeric_cols=numeric_cols,
+        k=5,
+        contamination=0.02,
+        limit_rows=50000,
+        model_name="knn_ecommerce"
+    )
+
 
 # 2) Online Retail dataset: raw.online_retail
 def run_for_online_retail():
@@ -66,6 +81,17 @@ def run_for_online_retail():
         eps=0.6,
         min_samples=15,
         model_name="dbscan_online_retail"
+    )
+
+    run_knn_outlier_for_table(
+        schema=schema,
+        table=table,
+        id_cols=["invoice_no", "stock_code", "customer_id"],
+        numeric_cols=numeric_cols,
+        k=5,
+        contamination=0.02,
+        limit_rows=50000,
+        model_name="knn_online_retail"
     )
 
 

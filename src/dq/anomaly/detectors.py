@@ -1,8 +1,11 @@
 import json
+import numpy as np
 import pandas as pd
 from sqlalchemy import text
 from sklearn.cluster import DBSCAN
 from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import NearestNeighbors
+from sklearn.preprocessing import StandardScaler
 from src.config.db_config import get_engine
 
 
@@ -204,6 +207,126 @@ def run_dbscan_for_table(
     )
 
     print(f"Saved {len(anomalies)} DBSCAN anomalies into dq.anomalies")
+
+    metrics_df = pd.DataFrame([{
+        "source_table": full_table,
+        "model_name": model_name,
+        "total_rows": total_rows,
+        "anomaly_count": anomaly_count,
+        "anomaly_rate": anomaly_rate
+    }])
+
+    metrics_df.to_sql(
+        "anomaly_metrics",
+        con=engine,
+        schema="dq",
+        if_exists="append",
+        index=False
+    )
+
+    print("Saved summary metrics into dq.anomaly_metrics")
+
+
+def run_knn_outlier_for_table(
+    schema: str,
+    table: str,
+    id_cols: list,
+    numeric_cols: list,
+    model_name: str = "knn_distance",
+    k: int = 5,
+    contamination: float = 0.02,
+    limit_rows: int = 50000,
+    use_robust_scaler: bool = True,
+    distance_stat: str = "mean",
+):
+    """
+    Run k-NN distance-based outlier detection on a sampled subset.
+    Uses distance to k nearest neighbors; top `contamination` fraction flagged as anomalies.
+    distance_stat: "mean" (default) or "kth" (distance to kth neighbor).
+    """
+    engine = get_engine()
+    full_table = f"{schema}.{table}"
+
+    print(f"\nRunning KNN outlier detection on {full_table} ...")
+
+    # Sample data
+    query = text(f"SELECT * FROM {full_table} ORDER BY RANDOM() LIMIT :limit_rows")
+    df = pd.read_sql(query, engine, params={"limit_rows": limit_rows})
+
+    if df.empty:
+        print(f"{full_table} is empty. Skipping.")
+        return
+
+    print(f"Sampled {len(df)} rows for KNN outlier detection.")
+
+    # Prepare features
+    X = df[numeric_cols].copy()
+    X = X.fillna(X.median(numeric_only=True))
+
+    # Scale features to balance distances
+    scaler = StandardScaler() if not use_robust_scaler else StandardScaler(with_mean=True, with_std=True)
+    X_scaled = scaler.fit_transform(X)
+
+    # Fit k-NN
+    k_eff = min(k, len(X_scaled))
+    if k_eff < 1:
+        print(f"Not enough rows for KNN on {full_table}. Skipping.")
+        return
+
+    nn = NearestNeighbors(n_neighbors=k_eff, n_jobs=-1)
+    nn.fit(X_scaled)
+
+    distances, _ = nn.kneighbors(X_scaled)
+    if distance_stat == "kth":
+        distance_scores = distances[:, -1]
+    else:
+        distance_scores = distances.mean(axis=1)
+
+    # Threshold based on contamination
+    threshold = np.quantile(distance_scores, 1 - contamination)
+    df["anomaly_score"] = distance_scores
+    df["is_anomaly"] = distance_scores > threshold
+
+    total_rows = len(df)
+    anomaly_count = int(df["is_anomaly"].sum())
+    anomaly_rate = anomaly_count / total_rows if total_rows else 0
+
+    print(f"Total rows: {total_rows}, anomalies detected: {anomaly_count} ({anomaly_rate:.2%})")
+
+    anomalies_df = df[df["is_anomaly"]].copy()
+
+    # Map id columns: first -> record_id, second -> entity_id, rest -> context
+    record_id_col = id_cols[0] if len(id_cols) > 0 else None
+    entity_id_col = id_cols[1] if len(id_cols) > 1 else None
+    context_cols = id_cols[2:] if len(id_cols) > 2 else []
+
+    for col in [record_id_col, entity_id_col] + context_cols:
+        if col and col not in anomalies_df.columns:
+            print(f"Warning: missing column '{col}' in {full_table}; filling with None.")
+            anomalies_df[col] = None
+
+    record_ids = anomalies_df[record_id_col].astype(str) if record_id_col else None
+    entity_ids = anomalies_df[entity_id_col].astype(str) if entity_id_col else None
+    context_payloads = _prepare_anomaly_context(anomalies_df, context_cols)
+
+    anomalies = pd.DataFrame({
+        "source_table": full_table,
+        "record_id": record_ids,
+        "entity_id": entity_ids,
+        "anomaly_type": model_name,
+        "anomaly_score": anomalies_df["anomaly_score"],
+        "anomaly_context": context_payloads
+    })
+
+    anomalies.to_sql(
+        "anomalies",
+        con=engine,
+        schema="dq",
+        if_exists="append",
+        index=False
+    )
+
+    print(f"Saved {len(anomalies)} KNN anomalies into dq.anomalies")
 
     metrics_df = pd.DataFrame([{
         "source_table": full_table,
