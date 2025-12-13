@@ -5,6 +5,7 @@ from src.dq.anomaly.detectors import (
     run_dbscan_for_table,
     run_knn_outlier_for_table,
 )
+from src.dq.imputation.knn_imputation import run_knn_imputation_for_table
 
 
 def reset_anomaly_tables():
@@ -20,6 +21,7 @@ def reset_anomaly_tables():
 def run_for_ecommerce():
     schema = "raw"
     table = "ecommerce_transactions"
+    processed_schema = "processed"
 
     numeric_cols = ["price", "quantity"]  # adjust if you add total_amount column later
 
@@ -54,11 +56,21 @@ def run_for_ecommerce():
         model_name="knn_ecommerce"
     )
 
+    run_knn_imputation_for_table(
+        schema=schema,  # read from raw, write to processed
+        table=table,
+        numeric_cols=numeric_cols,
+        id_col="transaction_no",
+        processed_schema=processed_schema,
+        n_neighbors=5
+    )
+
 
 # 2) Online Retail dataset: raw.online_retail
 def run_for_online_retail():
     schema = "raw"
     table = "online_retail"
+    processed_schema = "processed"
 
     numeric_cols = ["unit_price", "quantity"]  # you can add total_value = unit_price * quantity later
 
@@ -92,6 +104,15 @@ def run_for_online_retail():
         contamination=0.02,
         limit_rows=50000,
         model_name="knn_online_retail"
+    )
+
+    run_knn_imputation_for_table(
+        schema=schema,  # read from raw, write to processed
+        table=table,
+        numeric_cols=numeric_cols,
+        id_col="invoice_no",
+        processed_schema=processed_schema,
+        n_neighbors=5
     )
 
 
