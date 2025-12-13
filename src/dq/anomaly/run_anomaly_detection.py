@@ -6,6 +6,7 @@ from src.dq.anomaly.detectors import (
     run_knn_outlier_for_table,
 )
 from src.dq.imputation.knn_imputation import run_knn_imputation_for_table
+from src.dq.validation.run_validation import run_validation_for_table
 
 
 def reset_anomaly_tables():
@@ -52,7 +53,7 @@ def run_for_ecommerce():
         numeric_cols=numeric_cols,
         k=5,
         contamination=0.02,
-        limit_rows=50000,
+        limit_rows=100000,
         model_name="knn_ecommerce"
     )
 
@@ -62,7 +63,19 @@ def run_for_ecommerce():
         numeric_cols=numeric_cols,
         id_col="transaction_no",
         processed_schema=processed_schema,
-        n_neighbors=5
+        n_neighbors=5,
+        limit_rows=100000
+    )
+
+    run_validation_for_table(
+        schema=processed_schema,
+        table=table,
+        id_col="transaction_no",
+        date_col=None,
+        numeric_cols=numeric_cols,
+        stock_code_col=None,
+        text_cols=["product_name"],
+        source_label=f"{processed_schema}.{table}"
     )
 
 
@@ -102,7 +115,7 @@ def run_for_online_retail():
         numeric_cols=numeric_cols,
         k=5,
         contamination=0.02,
-        limit_rows=50000,
+        limit_rows=100000,
         model_name="knn_online_retail"
     )
 
@@ -112,7 +125,19 @@ def run_for_online_retail():
         numeric_cols=numeric_cols,
         id_col="invoice_no",
         processed_schema=processed_schema,
-        n_neighbors=5
+        n_neighbors=5,
+        limit_rows=100000
+    )
+
+    run_validation_for_table(
+        schema=processed_schema,
+        table=table,
+        id_col="invoice_no",
+        date_col=None,
+        numeric_cols=numeric_cols,
+        stock_code_col="stock_code",
+        text_cols=["description"],
+        source_label=f"{processed_schema}.{table}"
     )
 
 
