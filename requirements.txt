@@ -1,0 +1,6 @@
+pandas
+numpy
+scikit-learn
+sqlalchemy
+psycopg2-binary
+ydata-profiling>=4.6
