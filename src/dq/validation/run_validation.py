@@ -7,6 +7,7 @@ from src.dq.validation.rules import (
     rule_not_future_date,
     rule_pattern,
     rule_length,
+    rule_duplicates,
 )
 
 
@@ -52,6 +53,7 @@ def run_validation_for_table(
     numeric_cols: list,
     stock_code_col: str | None = None,
     text_cols: list | None = None,
+    duplicate_keys: list[str] | None = None,
     source_label: str | None = None,
 ):
     """
@@ -114,6 +116,9 @@ def run_validation_for_table(
     # Date rule
     if date_col and date_col in df.columns:
         rules.append(lambda d: rule_not_future_date(d, date_col))
+    # Duplicate rule
+    if duplicate_keys:
+        rules.append(lambda d, keys=duplicate_keys: rule_duplicates(d, keys))
 
     issues_records = []
     metrics_records = []

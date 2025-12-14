@@ -34,3 +34,14 @@ def rule_length(df: pd.DataFrame, col: str, min_len: int | None = None, max_len:
     if max_len is not None:
         mask |= lengths > max_len
     return mask, f"{col}_length", f"{col} length must be between {min_len} and {max_len}", col
+
+
+def rule_duplicates(df: pd.DataFrame, subset: list[str], name: str | None = None):
+    """
+    Flag rows that have duplicate values on the given subset of columns.
+    """
+    mask = df.duplicated(subset=subset, keep=False)
+    col_label = ",".join(subset)
+    rule_name = name or f"duplicate_on_{col_label}"
+    desc = f"Duplicate values detected on columns [{col_label}]"
+    return mask, rule_name, desc, col_label

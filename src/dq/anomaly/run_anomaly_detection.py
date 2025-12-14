@@ -75,6 +75,7 @@ def run_for_ecommerce():
         numeric_cols=numeric_cols,
         stock_code_col=None,
         text_cols=["product_name"],
+        duplicate_keys=["transaction_no", "product_no"],
         source_label=f"{processed_schema}.{table}"
     )
 
@@ -137,6 +138,7 @@ def run_for_online_retail():
         numeric_cols=numeric_cols,
         stock_code_col="stock_code",
         text_cols=["description"],
+        duplicate_keys=["invoice_no", "stock_code"],
         source_label=f"{processed_schema}.{table}"
     )
 
