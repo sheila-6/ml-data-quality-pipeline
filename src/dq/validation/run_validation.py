@@ -1,3 +1,6 @@
+import logging
+import time
+
 import pandas as pd
 from sqlalchemy import text
 from src.config.db_config import get_engine
@@ -9,6 +12,8 @@ from src.dq.validation.rules import (
     rule_length,
     rule_duplicates,
 )
+
+logger = logging.getLogger("dq_pipeline")
 
 
 def ensure_validation_tables(engine):
@@ -65,10 +70,12 @@ def run_validation_for_table(
     full_table = f"{schema}.{table}"
     source_label = source_label or full_table
 
-    print(f"\nRunning validation on {full_table} ...")
+    logger.info("Running validation on %s", full_table)
+    start = time.perf_counter()
     df = pd.read_sql(f"SELECT * FROM {full_table}", engine)
+    logger.info("Loaded %s rows from %s in %.2fs", len(df), full_table, time.perf_counter() - start)
     if df.empty:
-        print(f"{full_table} is empty. Skipping validation.")
+        logger.info("%s is empty. Skipping validation.", full_table)
         return
 
     # Normalize stock_code/text columns in DB and in-memory for validation
@@ -164,9 +171,9 @@ def run_validation_for_table(
             if_exists="append",
             index=False,
         )
-        print(f"Logged {len(issues_df)} validation issues for {full_table}.")
+        logger.info("Logged %s validation issues for %s.", len(issues_df), full_table)
     else:
-        print(f"No validation issues for {full_table}.")
+        logger.info("No validation issues for %s.", full_table)
 
     if metrics_records:
         metrics_df = pd.DataFrame(metrics_records)
@@ -177,4 +184,4 @@ def run_validation_for_table(
             if_exists="append",
             index=False,
         )
-        print(f"Logged validation metrics for {full_table}.")
+        logger.info("Logged validation metrics for %s (%s rules).", full_table, len(metrics_records))

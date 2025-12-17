@@ -1,3 +1,6 @@
+import logging
+from pathlib import Path
+
 from sqlalchemy import text
 from src.config.db_config import get_engine
 from src.dq.anomaly.detectors import (
@@ -8,18 +11,37 @@ from src.dq.anomaly.detectors import (
 from src.dq.imputation.knn_imputation import run_knn_imputation_for_table
 from src.dq.validation.run_validation import run_validation_for_table
 
+LOG_NAME = "dq_pipeline"
+
+
+def setup_logging(log_file: str = "logs/pipeline.log"):
+    """Configure shared pipeline logging to file + console with timestamps."""
+    Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ],
+        force=True,
+    )
+    return logging.getLogger(LOG_NAME)
+
 
 def reset_anomaly_tables():
     """Clear anomalies and metrics to avoid duplicate rows on rerun."""
+    logger = logging.getLogger(LOG_NAME)
     engine = get_engine()
     with engine.begin() as conn:
         conn.execute(text("TRUNCATE TABLE dq.anomalies RESTART IDENTITY"))
         conn.execute(text("TRUNCATE TABLE dq.anomaly_metrics RESTART IDENTITY"))
-    print("Cleared dq.anomalies and dq.anomaly_metrics.")
+    logger.info("Cleared dq.anomalies and dq.anomaly_metrics.")
 
 
 # 1) UK E-Commerce dataset: raw.ecommerce_transactions
 def run_for_ecommerce():
+    logger = logging.getLogger(LOG_NAME)
     schema = "raw"
     table = "ecommerce_transactions"
     processed_schema = "processed"
@@ -40,7 +62,7 @@ def run_for_ecommerce():
         table=table,
         id_cols=["transaction_no", "product_no"],
         numeric_cols=numeric_cols,
-        limit_rows=50000,
+        limit_rows=50000,  # sample to avoid OOM
         eps=0.6,
         min_samples=15,
         model_name="dbscan_ecommerce"
@@ -53,7 +75,7 @@ def run_for_ecommerce():
         numeric_cols=numeric_cols,
         k=5,
         contamination=0.02,
-        limit_rows=100000,
+        limit_rows=100000,  # capped sample
         model_name="knn_ecommerce"
     )
 
@@ -64,7 +86,7 @@ def run_for_ecommerce():
         id_col="transaction_no",
         processed_schema=processed_schema,
         n_neighbors=5,
-        limit_rows=100000
+        limit_rows=None  # full data
     )
 
     run_validation_for_table(
@@ -82,6 +104,7 @@ def run_for_ecommerce():
 
 # 2) Online Retail dataset: raw.online_retail
 def run_for_online_retail():
+    logger = logging.getLogger(LOG_NAME)
     schema = "raw"
     table = "online_retail"
     processed_schema = "processed"
@@ -103,7 +126,7 @@ def run_for_online_retail():
         table=table,
         id_cols=["invoice_no", "stock_code", "customer_id"],
         numeric_cols=numeric_cols,
-        limit_rows=50000,
+        limit_rows=50000,  # sample to avoid OOM
         eps=0.6,
         min_samples=15,
         model_name="dbscan_online_retail"
@@ -116,7 +139,7 @@ def run_for_online_retail():
         numeric_cols=numeric_cols,
         k=5,
         contamination=0.02,
-        limit_rows=100000,
+        limit_rows=100000,  # capped sample
         model_name="knn_online_retail"
     )
 
@@ -127,7 +150,7 @@ def run_for_online_retail():
         id_col="invoice_no",
         processed_schema=processed_schema,
         n_neighbors=5,
-        limit_rows=100000
+        limit_rows=None  # full data
     )
 
     run_validation_for_table(
@@ -144,8 +167,23 @@ def run_for_online_retail():
 
 
 if __name__ == "__main__":
+    logger = setup_logging()
+    logger.info("Starting anomaly detection pipeline...")
     reset_anomaly_tables()
-    print("Starting anomaly detection pipeline...")
-    run_for_ecommerce()
-    run_for_online_retail()
-    print("\nAnomaly detection completed for both datasets.")
+    try:
+        logger.info("Running UK E-Commerce pipeline...")
+        run_for_ecommerce()
+        logger.info("UK E-Commerce pipeline completed.")
+    except Exception:
+        logger.exception("UK E-Commerce pipeline failed.")
+        raise
+
+    try:
+        logger.info("Running Online Retail pipeline...")
+        run_for_online_retail()
+        logger.info("Online Retail pipeline completed.")
+    except Exception:
+        logger.exception("Online Retail pipeline failed.")
+        raise
+
+    logger.info("Anomaly detection completed for both datasets.")

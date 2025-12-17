@@ -1,4 +1,7 @@
 import json
+import logging
+import time
+
 import numpy as np
 import pandas as pd
 from sqlalchemy import text
@@ -7,6 +10,8 @@ from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 from src.config.db_config import get_engine
+
+logger = logging.getLogger("dq_pipeline")
 
 
 def _prepare_anomaly_context(df: pd.DataFrame, context_cols: list | None) -> list:
@@ -38,26 +43,30 @@ def run_isolation_forest_for_table(
     engine = get_engine()
     full_table = f"{schema}.{table}"
 
-    print(f"\nRunning IsolationForest on {full_table} ...")
+    logger.info("Running IsolationForest on %s", full_table)
 
+    start = time.perf_counter()
     df = pd.read_sql(f"SELECT * FROM {full_table}", engine)
+    logger.info("Loaded %s rows from %s in %.2fs", len(df), full_table, time.perf_counter() - start)
     if df.empty:
-        print(f"{full_table} is empty. Skipping.")
+        logger.info("%s is empty. Skipping.", full_table)
         return
 
     if numeric_cols is None:
         numeric_cols = df.select_dtypes(include=["int64", "float64", "Int64", "Float64"]).columns.tolist()
 
     if not numeric_cols:
-        print(f"No numeric columns found in {full_table}. Cannot run anomaly detection.")
+        logger.info("No numeric columns found in %s. Cannot run anomaly detection.", full_table)
         return
 
-    print(f"Using numeric columns for anomaly detection: {numeric_cols}")
+    logger.info("Using numeric columns for anomaly detection: %s", numeric_cols)
     X = df[numeric_cols].copy()
     X = X.fillna(X.median(numeric_only=True))
 
+    train_start = time.perf_counter()
     model = IsolationForest(contamination=0.02, random_state=42, n_estimators=200)
     model.fit(X)
+    logger.info("IsolationForest fit completed in %.2fs", time.perf_counter() - train_start)
 
     scores = model.decision_function(X)
     labels = model.predict(X)  # -1 = anomaly, 1 = normal
@@ -69,14 +78,20 @@ def run_isolation_forest_for_table(
     anomaly_count = int(df["is_anomaly"].sum())
     anomaly_rate = anomaly_count / total_rows if total_rows else 0
 
-    print(f"Total rows: {total_rows}, anomalies detected: {anomaly_count} ({anomaly_rate:.2%})")
+    logger.info(
+        "IsolationForest results for %s: total_rows=%s, anomalies=%s (%.2f%%)",
+        full_table,
+        total_rows,
+        anomaly_count,
+        anomaly_rate * 100,
+    )
 
     anomalies_df = df[df["is_anomaly"]].copy()
 
     # Ensure ID/context columns exist
     for col in [record_id_col, entity_id_col] + (context_cols or []):
         if col and col not in anomalies_df.columns:
-            print(f"Warning: missing column '{col}' in {full_table}; filling with None.")
+            logger.warning("Missing column '%s' in %s; filling with None.", col, full_table)
             anomalies_df[col] = None
 
     context_payloads = _prepare_anomaly_context(anomalies_df, context_cols)
@@ -98,7 +113,7 @@ def run_isolation_forest_for_table(
         index=False
     )
 
-    print(f"Saved {len(anomalies)} anomalies into dq.anomalies")
+    logger.info("Saved %s IsolationForest anomalies into dq.anomalies", len(anomalies))
 
     metrics_df = pd.DataFrame([{
         "source_table": full_table,
@@ -116,7 +131,7 @@ def run_isolation_forest_for_table(
         index=False
     )
 
-    print("Saved summary metrics into dq.anomaly_metrics")
+    logger.info("Saved IsolationForest metrics into dq.anomaly_metrics")
 
 
 def run_dbscan_for_table(
@@ -136,33 +151,44 @@ def run_dbscan_for_table(
     engine = get_engine()
     full_table = f"{schema}.{table}"
 
-    print(f"\nRunning DBSCAN on {full_table} ...")
+    logger.info("Running DBSCAN on %s", full_table)
 
     # Load data (optionally sample to limit runtime)
     if limit_rows:
         query = text(f"SELECT * FROM {full_table} ORDER BY RANDOM() LIMIT :limit_rows")
+        start = time.perf_counter()
         df = pd.read_sql(query, engine, params={"limit_rows": limit_rows})
-        print(f"Sampled {len(df)} rows (limit {limit_rows}) from {full_table} for DBSCAN.")
+        logger.info(
+            "Sampled %s rows (limit %s) from %s for DBSCAN in %.2fs",
+            len(df),
+            limit_rows,
+            full_table,
+            time.perf_counter() - start,
+        )
     else:
+        start = time.perf_counter()
         df = pd.read_sql(f"SELECT * FROM {full_table}", engine)
+        logger.info("Loaded %s rows from %s in %.2fs", len(df), full_table, time.perf_counter() - start)
 
     if df.empty:
-        print(f"{full_table} is empty. Skipping.")
+        logger.info("%s is empty. Skipping DBSCAN.", full_table)
         return
 
     if numeric_cols is None:
         numeric_cols = df.select_dtypes(include=["int64", "float64", "Int64", "Float64"]).columns.tolist()
 
     if not numeric_cols:
-        print(f"No numeric columns found in {full_table}. Cannot run anomaly detection.")
+        logger.info("No numeric columns found in %s. Cannot run DBSCAN.", full_table)
         return
 
-    print(f"Using numeric columns for anomaly detection: {numeric_cols}")
+    logger.info("Using numeric columns for DBSCAN: %s", numeric_cols)
     X = df[numeric_cols].copy()
     X = X.fillna(X.median(numeric_only=True))
 
+    train_start = time.perf_counter()
     model = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1)
     labels = model.fit_predict(X)
+    logger.info("DBSCAN fit completed in %.2fs", time.perf_counter() - train_start)
 
     df["is_anomaly"] = labels == -1  # DBSCAN marks noise as -1
     df["anomaly_score"] = -1.0       # placeholder score for DBSCAN noise points
@@ -171,7 +197,13 @@ def run_dbscan_for_table(
     anomaly_count = int(df["is_anomaly"].sum())
     anomaly_rate = anomaly_count / total_rows if total_rows else 0
 
-    print(f"Total rows: {total_rows}, anomalies detected: {anomaly_count} ({anomaly_rate:.2%})")
+    logger.info(
+        "DBSCAN results for %s: total_rows=%s, anomalies=%s (%.2f%%)",
+        full_table,
+        total_rows,
+        anomaly_count,
+        anomaly_rate * 100,
+    )
 
     anomalies_df = df[df["is_anomaly"]].copy()
 
@@ -182,7 +214,7 @@ def run_dbscan_for_table(
 
     for col in [record_id_col, entity_id_col] + context_cols:
         if col and col not in anomalies_df.columns:
-            print(f"Warning: missing column '{col}' in {full_table}; filling with None.")
+            logger.warning("Missing column '%s' in %s; filling with None.", col, full_table)
             anomalies_df[col] = None
 
     record_ids = anomalies_df[record_id_col].astype(str) if record_id_col else None
@@ -206,7 +238,7 @@ def run_dbscan_for_table(
         index=False
     )
 
-    print(f"Saved {len(anomalies)} DBSCAN anomalies into dq.anomalies")
+    logger.info("Saved %s DBSCAN anomalies into dq.anomalies", len(anomalies))
 
     metrics_df = pd.DataFrame([{
         "source_table": full_table,
@@ -224,7 +256,7 @@ def run_dbscan_for_table(
         index=False
     )
 
-    print("Saved summary metrics into dq.anomaly_metrics")
+    logger.info("Saved DBSCAN metrics into dq.anomaly_metrics")
 
 
 def run_knn_outlier_for_table(
@@ -247,17 +279,17 @@ def run_knn_outlier_for_table(
     engine = get_engine()
     full_table = f"{schema}.{table}"
 
-    print(f"\nRunning KNN outlier detection on {full_table} ...")
+    logger.info("Running KNN outlier detection on %s", full_table)
 
     # Sample data
     query = text(f"SELECT * FROM {full_table} ORDER BY RANDOM() LIMIT :limit_rows")
+    start = time.perf_counter()
     df = pd.read_sql(query, engine, params={"limit_rows": limit_rows})
+    logger.info("Sampled %s rows (limit %s) for KNN from %s in %.2fs", len(df), limit_rows, full_table, time.perf_counter() - start)
 
     if df.empty:
-        print(f"{full_table} is empty. Skipping.")
+        logger.info("%s is empty. Skipping KNN outlier detection.", full_table)
         return
-
-    print(f"Sampled {len(df)} rows for KNN outlier detection.")
 
     # Prepare features
     X = df[numeric_cols].copy()
@@ -270,9 +302,10 @@ def run_knn_outlier_for_table(
     # Fit k-NN
     k_eff = min(k, len(X_scaled))
     if k_eff < 1:
-        print(f"Not enough rows for KNN on {full_table}. Skipping.")
+        logger.info("Not enough rows for KNN on %s. Skipping.", full_table)
         return
 
+    train_start = time.perf_counter()
     nn = NearestNeighbors(n_neighbors=k_eff, n_jobs=-1)
     nn.fit(X_scaled)
 
@@ -281,6 +314,7 @@ def run_knn_outlier_for_table(
         distance_scores = distances[:, -1]
     else:
         distance_scores = distances.mean(axis=1)
+    logger.info("KNN distance computation completed in %.2fs", time.perf_counter() - train_start)
 
     # Threshold based on contamination
     threshold = np.quantile(distance_scores, 1 - contamination)
@@ -291,7 +325,13 @@ def run_knn_outlier_for_table(
     anomaly_count = int(df["is_anomaly"].sum())
     anomaly_rate = anomaly_count / total_rows if total_rows else 0
 
-    print(f"Total rows: {total_rows}, anomalies detected: {anomaly_count} ({anomaly_rate:.2%})")
+    logger.info(
+        "KNN outlier results for %s: total_rows=%s, anomalies=%s (%.2f%%)",
+        full_table,
+        total_rows,
+        anomaly_count,
+        anomaly_rate * 100,
+    )
 
     anomalies_df = df[df["is_anomaly"]].copy()
 
@@ -302,7 +342,7 @@ def run_knn_outlier_for_table(
 
     for col in [record_id_col, entity_id_col] + context_cols:
         if col and col not in anomalies_df.columns:
-            print(f"Warning: missing column '{col}' in {full_table}; filling with None.")
+            logger.warning("Missing column '%s' in %s; filling with None.", col, full_table)
             anomalies_df[col] = None
 
     record_ids = anomalies_df[record_id_col].astype(str) if record_id_col else None
@@ -326,7 +366,7 @@ def run_knn_outlier_for_table(
         index=False
     )
 
-    print(f"Saved {len(anomalies)} KNN anomalies into dq.anomalies")
+    logger.info("Saved %s KNN anomalies into dq.anomalies", len(anomalies))
 
     metrics_df = pd.DataFrame([{
         "source_table": full_table,
@@ -344,4 +384,4 @@ def run_knn_outlier_for_table(
         index=False
     )
 
-    print("Saved summary metrics into dq.anomaly_metrics")
+    logger.info("Saved KNN metrics into dq.anomaly_metrics")
