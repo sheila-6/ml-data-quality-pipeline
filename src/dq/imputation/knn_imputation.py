@@ -90,12 +90,20 @@ def run_knn_imputation_for_table(
     # Track missing after
     missing_after = df_imputed[numeric_cols].isna().sum()
 
-    # Save processed data
+    # Save processed data without dropping the table (avoid breaking dependent views)
+    with engine.begin() as conn:
+        conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {processed_schema}"))
+        try:
+            conn.execute(text(f"DELETE FROM {processed_schema}.{table}"))
+        except Exception:
+            # Table may not exist yet; that's fine—pandas will create it.
+            pass
+
     df_imputed.to_sql(
         table,
         con=engine,
         schema=processed_schema,
-        if_exists="replace",
+        if_exists="append",
         index=False
     )
 
