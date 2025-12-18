@@ -29,6 +29,57 @@ def setup_logging(log_file: str = "logs/pipeline.log"):
     return logging.getLogger(LOG_NAME)
 
 
+def deduplicate_processed_table(schema: str, table: str, key_cols: list[str]):
+    """
+    Drop duplicate rows in-place on processed tables, keeping the first per key.
+    """
+    logger = logging.getLogger(LOG_NAME)
+    engine = get_engine()
+    keys = ", ".join(key_cols)
+    with engine.begin() as conn:
+        duplicates_to_remove = conn.execute(
+            text(
+                f"""
+                SELECT COALESCE(SUM(c - 1), 0) AS dup_rows
+                FROM (
+                    SELECT COUNT(*) AS c
+                    FROM {schema}.{table}
+                    GROUP BY {keys}
+                ) sub
+                """
+            )
+        ).scalar_one()
+
+        if duplicates_to_remove == 0:
+            logger.info("No duplicates found for %s.%s on keys (%s).", schema, table, keys)
+            return
+
+        conn.execute(
+            text(
+                f"""
+                DELETE FROM {schema}.{table} a
+                USING (
+                    SELECT ctid
+                    FROM (
+                        SELECT ctid, ROW_NUMBER() OVER (PARTITION BY {keys} ORDER BY ctid) AS rn
+                        FROM {schema}.{table}
+                    ) t
+                    WHERE rn > 1
+                ) d
+                WHERE a.ctid = d.ctid
+                """
+            )
+        )
+
+    logger.info(
+        "Removed %s duplicate rows from %s.%s using keys (%s).",
+        duplicates_to_remove,
+        schema,
+        table,
+        keys,
+    )
+
+
 def reset_anomaly_tables():
     """Clear anomalies and metrics to avoid duplicate rows on rerun."""
     logger = logging.getLogger(LOG_NAME)
@@ -88,6 +139,8 @@ def run_for_ecommerce():
         n_neighbors=5,
         limit_rows=None  # full data
     )
+
+    deduplicate_processed_table(processed_schema, table, ["transaction_no", "product_no"])
 
     run_validation_for_table(
         schema=processed_schema,
@@ -152,6 +205,8 @@ def run_for_online_retail():
         n_neighbors=5,
         limit_rows=None  # full data
     )
+
+    deduplicate_processed_table(processed_schema, table, ["invoice_no", "stock_code"])
 
     run_validation_for_table(
         schema=processed_schema,
