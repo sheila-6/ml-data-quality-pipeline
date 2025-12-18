@@ -141,3 +141,53 @@ MemoryError: bad allocation
 2025-12-18 22:04:29,434 [INFO] dq_pipeline - Loaded 536350 rows from raw.ecommerce_transactions in 6.66s
 2025-12-18 22:04:29,434 [INFO] dq_pipeline - Fetching anomaly ids for raw.ecommerce_transactions using id_col 'transaction_no'
 2025-12-18 22:04:30,026 [INFO] dq_pipeline - Running KNNImputer with n_neighbors=5 on 310030 normal rows (2 numeric cols)
+2025-12-18 22:09:36,912 [INFO] dq_pipeline - KNNImputer completed in 306.89s
+2025-12-18 22:10:47,386 [INFO] dq_pipeline - Saved imputed data to processed.ecommerce_transactions in 66.38s
+2025-12-18 22:10:47,403 [INFO] dq_pipeline - Imputation audit logged for 2 columns into audit.imputation_log in 0.01s
+2025-12-18 22:10:57,572 [INFO] dq_pipeline - Removed 10983 duplicate rows from processed.ecommerce_transactions using keys (transaction_no, product_no).
+2025-12-18 22:10:57,720 [INFO] dq_pipeline - Running validation on processed.ecommerce_transactions
+2025-12-18 22:11:03,373 [INFO] dq_pipeline - Loaded 525367 rows from processed.ecommerce_transactions in 5.65s
+2025-12-18 22:11:14,573 [INFO] dq_pipeline - No validation issues for processed.ecommerce_transactions.
+2025-12-18 22:11:14,596 [INFO] dq_pipeline - Logged validation metrics for processed.ecommerce_transactions (4 rules).
+2025-12-18 22:11:14,697 [INFO] dq_pipeline - UK E-Commerce pipeline completed.
+2025-12-18 22:11:14,698 [INFO] dq_pipeline - Running Online Retail pipeline...
+2025-12-18 22:11:14,698 [INFO] dq_pipeline - Running IsolationForest on raw.online_retail
+2025-12-18 22:11:28,240 [INFO] dq_pipeline - Loaded 541909 rows from raw.online_retail in 13.54s
+2025-12-18 22:11:28,240 [INFO] dq_pipeline - Using numeric columns for anomaly detection: ['unit_price', 'quantity']
+2025-12-18 22:11:40,688 [INFO] dq_pipeline - IsolationForest fit completed in 12.39s
+2025-12-18 22:11:58,990 [INFO] dq_pipeline - IsolationForest results for raw.online_retail: total_rows=541909, anomalies=10790 (1.99%)
+2025-12-18 22:11:59,921 [INFO] dq_pipeline - Saved 10790 IsolationForest anomalies into dq.anomalies
+2025-12-18 22:11:59,932 [INFO] dq_pipeline - Saved IsolationForest metrics into dq.anomaly_metrics
+2025-12-18 22:12:00,131 [INFO] dq_pipeline - Running DBSCAN on raw.online_retail
+2025-12-18 22:12:02,200 [INFO] dq_pipeline - Sampled 50000 rows (limit 50000) from raw.online_retail for DBSCAN in 2.07s
+2025-12-18 22:12:02,201 [INFO] dq_pipeline - Using numeric columns for DBSCAN: ['unit_price', 'quantity']
+2025-12-18 22:12:05,191 [INFO] dq_pipeline - DBSCAN fit completed in 2.98s
+2025-12-18 22:12:05,194 [INFO] dq_pipeline - DBSCAN results for raw.online_retail: total_rows=50000, anomalies=1649 (3.30%)
+2025-12-18 22:12:05,371 [INFO] dq_pipeline - Saved 1649 DBSCAN anomalies into dq.anomalies
+2025-12-18 22:12:05,380 [INFO] dq_pipeline - Saved DBSCAN metrics into dq.anomaly_metrics
+2025-12-18 22:12:05,399 [INFO] dq_pipeline - Running KNN outlier detection on raw.online_retail
+2025-12-18 22:12:08,223 [INFO] dq_pipeline - Sampled 100000 rows (limit 100000) for KNN from raw.online_retail in 2.82s
+2025-12-18 22:12:10,491 [INFO] dq_pipeline - KNN distance computation completed in 2.24s
+2025-12-18 22:12:10,494 [INFO] dq_pipeline - KNN outlier results for raw.online_retail: total_rows=100000, anomalies=1997 (2.00%)
+2025-12-18 22:12:10,707 [INFO] dq_pipeline - Saved 1997 KNN anomalies into dq.anomalies
+2025-12-18 22:12:10,717 [INFO] dq_pipeline - Saved KNN metrics into dq.anomaly_metrics
+2025-12-18 22:12:10,749 [INFO] dq_pipeline - Running LOF on raw.online_retail
+2025-12-18 22:12:14,342 [INFO] dq_pipeline - Sampled 100000 rows (limit 100000) for LOF from raw.online_retail in 3.59s
+2025-12-18 22:12:17,981 [INFO] dq_pipeline - LOF fit completed in 3.62s
+2025-12-18 22:12:17,984 [INFO] dq_pipeline - LOF results for raw.online_retail: total_rows=100000, anomalies=2000 (2.00%)
+2025-12-18 22:12:18,160 [INFO] dq_pipeline - Saved 2000 LOF anomalies into dq.anomalies
+2025-12-18 22:12:18,169 [INFO] dq_pipeline - Saved LOF metrics into dq.anomaly_metrics
+2025-12-18 22:12:18,199 [INFO] dq_pipeline - Running KNN imputation on raw.online_retail
+2025-12-18 22:12:25,259 [INFO] dq_pipeline - Loaded 541909 rows from raw.online_retail in 7.06s
+2025-12-18 22:12:25,259 [INFO] dq_pipeline - Fetching anomaly ids for raw.online_retail using id_col 'invoice_no'
+2025-12-18 22:12:25,857 [INFO] dq_pipeline - Running KNNImputer with n_neighbors=5 on 302863 normal rows (2 numeric cols)
+2025-12-18 22:20:50,177 [INFO] dq_pipeline - KNNImputer completed in 504.32s
+2025-12-18 22:21:58,808 [INFO] dq_pipeline - Saved imputed data to processed.online_retail in 65.01s
+2025-12-18 22:21:58,823 [INFO] dq_pipeline - Imputation audit logged for 2 columns into audit.imputation_log in 0.01s
+2025-12-18 22:22:05,354 [INFO] dq_pipeline - Removed 10684 duplicate rows from processed.online_retail using keys (invoice_no, stock_code).
+2025-12-18 22:22:05,492 [INFO] dq_pipeline - Running validation on processed.online_retail
+2025-12-18 22:22:12,339 [INFO] dq_pipeline - Loaded 531225 rows from processed.online_retail in 6.85s
+2025-12-18 22:22:32,175 [INFO] dq_pipeline - Logged 4 validation issues for processed.online_retail.
+2025-12-18 22:22:32,185 [INFO] dq_pipeline - Logged validation metrics for processed.online_retail (6 rules).
+2025-12-18 22:22:32,274 [INFO] dq_pipeline - Online Retail pipeline completed.
+2025-12-18 22:22:32,274 [INFO] dq_pipeline - Anomaly detection completed for both datasets.

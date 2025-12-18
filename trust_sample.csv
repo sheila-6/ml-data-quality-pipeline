@@ -1,0 +1,5 @@
+source_table,user_group,trust_score_raw
+processed.ecommerce_transactions,analyst,4.1
+processed.ecommerce_transactions,manager,3.9
+processed.online_retail,analyst,4.0
+processed.online_retail,manager,3.8
