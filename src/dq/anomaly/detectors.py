@@ -7,7 +7,7 @@ import pandas as pd
 from sqlalchemy import text
 from sklearn.cluster import DBSCAN
 from sklearn.ensemble import IsolationForest
-from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors import NearestNeighbors, LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
 from src.config.db_config import get_engine
 
@@ -385,3 +385,122 @@ def run_knn_outlier_for_table(
     )
 
     logger.info("Saved KNN metrics into dq.anomaly_metrics")
+
+
+def run_lof_for_table(
+    schema: str,
+    table: str,
+    id_cols: list,
+    numeric_cols: list,
+    model_name: str = "lof",
+    contamination: float = 0.02,
+    limit_rows: int = 100000,
+):
+    """
+    Run Local Outlier Factor on a sampled subset of numeric columns.
+    """
+    engine = get_engine()
+    full_table = f"{schema}.{table}"
+
+    logger.info("Running LOF on %s", full_table)
+
+    # Sample data
+    query = text(f"SELECT * FROM {full_table} ORDER BY RANDOM() LIMIT :limit_rows")
+    start = time.perf_counter()
+    df = pd.read_sql(query, engine, params={"limit_rows": limit_rows})
+    logger.info("Sampled %s rows (limit %s) for LOF from %s in %.2fs", len(df), limit_rows, full_table, time.perf_counter() - start)
+
+    if df.empty:
+        logger.info("%s is empty. Skipping LOF.", full_table)
+        return
+
+    X = df[numeric_cols].copy()
+    X = X.fillna(X.median(numeric_only=True))
+
+    # Scale features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    # Fit LOF
+    n_neighbors = min(20, len(X_scaled) - 1) if len(X_scaled) > 1 else 1
+    if n_neighbors < 2:
+        logger.info("Not enough rows for LOF on %s. Skipping.", full_table)
+        return
+
+    train_start = time.perf_counter()
+    lof = LocalOutlierFactor(
+        n_neighbors=n_neighbors,
+        contamination=contamination,
+        novelty=False,
+    )
+    labels = lof.fit_predict(X_scaled)
+    scores = -lof.negative_outlier_factor_
+    logger.info("LOF fit completed in %.2fs", time.perf_counter() - train_start)
+
+    df["is_anomaly"] = labels == -1
+    df["anomaly_score"] = scores
+
+    total_rows = len(df)
+    anomaly_count = int(df["is_anomaly"].sum())
+    anomaly_rate = anomaly_count / total_rows if total_rows else 0
+
+    logger.info(
+        "LOF results for %s: total_rows=%s, anomalies=%s (%.2f%%)",
+        full_table,
+        total_rows,
+        anomaly_count,
+        anomaly_rate * 100,
+    )
+
+    anomalies_df = df[df["is_anomaly"]].copy()
+
+    # Map id columns: first -> record_id, second -> entity_id, rest -> context
+    record_id_col = id_cols[0] if len(id_cols) > 0 else None
+    entity_id_col = id_cols[1] if len(id_cols) > 1 else None
+    context_cols = id_cols[2:] if len(id_cols) > 2 else []
+
+    for col in [record_id_col, entity_id_col] + context_cols:
+        if col and col not in anomalies_df.columns:
+            logger.warning("Missing column '%s' in %s; filling with None.", col, full_table)
+            anomalies_df[col] = None
+
+    record_ids = anomalies_df[record_id_col].astype(str) if record_id_col else None
+    entity_ids = anomalies_df[entity_id_col].astype(str) if entity_id_col else None
+    context_payloads = _prepare_anomaly_context(anomalies_df, context_cols)
+
+    anomalies = pd.DataFrame({
+        "source_table": full_table,
+        "record_id": record_ids,
+        "entity_id": entity_ids,
+        "anomaly_type": model_name,
+        "anomaly_score": anomalies_df["anomaly_score"],
+        "anomaly_context": context_payloads
+    })
+
+    anomalies.to_sql(
+        "anomalies",
+        con=engine,
+        schema="dq",
+        if_exists="append",
+        index=False
+    )
+
+    logger.info("Saved %s LOF anomalies into dq.anomalies", len(anomalies))
+
+    metrics_df = pd.DataFrame([{
+        "source_table": full_table,
+        "model_name": model_name,
+        "total_rows": total_rows,
+        "anomaly_count": anomaly_count,
+        "anomaly_rate": anomaly_rate
+    }])
+
+    metrics_df.to_sql(
+        "anomaly_metrics",
+        con=engine,
+        schema="dq",
+        if_exists="append",
+        index=False
+    )
+
+    logger.info("Saved LOF metrics into dq.anomaly_metrics")

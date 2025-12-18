@@ -7,6 +7,7 @@ from src.dq.anomaly.detectors import (
     run_isolation_forest_for_table,
     run_dbscan_for_table,
     run_knn_outlier_for_table,
+    run_lof_for_table,
 )
 from src.dq.imputation.knn_imputation import run_knn_imputation_for_table
 from src.dq.validation.run_validation import run_validation_for_table
@@ -130,6 +131,16 @@ def run_for_ecommerce():
         model_name="knn_ecommerce"
     )
 
+    run_lof_for_table(
+        schema=schema,
+        table=table,
+        id_cols=["transaction_no", "product_no"],
+        numeric_cols=numeric_cols,
+        contamination=0.02,
+        limit_rows=100000,
+        model_name="lof_ecommerce"
+    )
+
     run_knn_imputation_for_table(
         schema=schema,  # read from raw, write to processed
         table=table,
@@ -194,6 +205,16 @@ def run_for_online_retail():
         contamination=0.02,
         limit_rows=100000,  # capped sample
         model_name="knn_online_retail"
+    )
+
+    run_lof_for_table(
+        schema=schema,
+        table=table,
+        id_cols=["invoice_no", "stock_code", "customer_id"],
+        numeric_cols=numeric_cols,
+        contamination=0.02,
+        limit_rows=100000,
+        model_name="lof_online_retail"
     )
 
     run_knn_imputation_for_table(
