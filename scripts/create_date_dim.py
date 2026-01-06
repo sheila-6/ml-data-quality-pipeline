@@ -7,7 +7,16 @@ Usage:
     python scripts/create_date_dim.py
 """
 
+import pathlib
+import sys
+
 from sqlalchemy import text
+
+# Ensure repo root on sys.path
+repo_root = pathlib.Path(__file__).resolve().parent.parent
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
 from src.config.db_config import get_engine
 
 
