@@ -1,0 +1,7 @@
+dataset,metric,before,after,improvement_pct
+ecommerce,Duplicate Rows,10983,0,100.0
+ecommerce,Invalid Numeric,8585,0,100.0
+ecommerce,Missing Numeric,0,0,0.0
+online_retail,Duplicate Rows,10684,2,99.9812804193186
+online_retail,Invalid Numeric,11805,0,100.0
+online_retail,Missing Numeric,0,0,0.0
