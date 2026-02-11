@@ -3,7 +3,7 @@ from sqlalchemy import create_engine
 
 # Database configuration
 DB_USER = "postgres"         
-DB_PASSWORD = "Kiptoo.4418" 
+DB_PASSWORD = "xxxxx"  # Replace with your actual password
 DB_HOST = "localhost"
 DB_PORT = "5432"
 DB_NAME = "postgres" 
